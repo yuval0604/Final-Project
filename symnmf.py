@@ -3,12 +3,11 @@ import numpy as np
 import symnmf
 
 def main():
-    # Check correct number of arguments
+    # command line arguments
     if len(sys.argv) != 4:
         print("An Error Has Occurred")
         sys.exit(1)
 
-    # Parse arguments
     try:
         k = int(sys.argv[1])
         goal = sys.argv[2]
@@ -17,48 +16,49 @@ def main():
         print("An Error Has Occurred")
         sys.exit(1)
 
-    # Validate k and goal
     valid_goals = ['symnmf', 'sym', 'ddg', 'norm']
     if goal not in valid_goals:
         print("An Error Has Occurred")
         sys.exit(1)
 
-    # Read input data
+    # read file
     try:
         X = np.loadtxt(file_name, delimiter=',')
     except:
         print("An Error Has Occurred")
         sys.exit(1)
 
-    # Set random seed as specified
     np.random.seed(1234)
 
-    # Process based on goal
+    # Calculate full symNMF
     if goal == 'symnmf':
-        # Compute W matrix first
+        # Compute W
         W = symnmf.norm(X)
         
-        # Initialize H randomly
+        # Initialize H
         m = np.mean(W)
         H = np.random.uniform(0, 2 * np.sqrt(m/k), (X.shape[0], k))
         
-        # Call C extension to perform symNMF
-        H_final = symnmf.symnmf(H, W)
+        # Calculate H
+        H_final = symnmf.symnmf(W,H)
         
-        # Print results formatted to 4 decimal places
+        # Print H
         for row in H_final:
             print(','.join(['{:.4f}'.format(val) for val in row]))
     
+    # Calculate similarity matrix
     elif goal == 'sym':
         result = symnmf.sym(X)
         for row in result:
             print(','.join(['{:.4f}'.format(val) for val in row]))
     
+    # Calculate diagonal degree matrix
     elif goal == 'ddg':
         result = symnmf.ddg(X)
         for row in result:
             print(','.join(['{:.4f}'.format(val) for val in row]))
     
+    # Calculate normalized similarity matrix
     elif goal == 'norm':
         result = symnmf.norm(X)
         for row in result:
