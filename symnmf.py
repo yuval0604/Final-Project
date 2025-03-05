@@ -3,7 +3,7 @@ import numpy as np
 import symnmf
 
 def main():
-    # command line arguments
+    # command line arguments check
     if len(sys.argv) != 4:
         print("An Error Has Occurred")
         sys.exit(1)
