@@ -4,12 +4,53 @@
 #include <string.h>
 #include "symnmf.h"
 
-#define MAX_LINE_LENGTH 10000
 #define EPSILON 1e-4
 #define MAX_ITER 300
 #define BETA 0.5
 
-/* Function to calculate Euclidean distance squared */
+/* Memory management: free 2D matrix */
+void free_matrix(double** matrix, int rows) {
+    int i;
+    if (matrix) {
+        for (i = 0; i < rows; i++) {
+            free(matrix[i]);
+        }
+        free(matrix);
+    }
+}
+
+/* Safe memory allocation with error handling */
+double** allocate_matrix(int rows, int cols) {
+    double** matrix;
+    int i;
+
+    matrix = (double**)malloc(rows * sizeof(double*));
+    if (!matrix) {
+        fprintf(stderr, "An Error Has Occurred\n");
+        exit(1);
+    }
+
+    for (i = 0; i < rows; i++) {
+        matrix[i] = (double*)calloc(cols, sizeof(double));
+        if (!matrix[i]) {
+            /* Free previously allocated rows */
+            free_matrix(matrix, i);
+            fprintf(stderr, "An Error Has Occurred\n");
+            exit(1);
+        }
+    }
+    return matrix;
+}
+
+/* Safe value handling to prevent division by zero */
+double safe_divide(double numerator, double denominator) {
+    if (fabs(denominator) < EPSILON) {
+        return numerator / EPSILON;
+    }
+    return numerator / denominator;
+}
+
+/* Euclidean distance calculation */
 double euclidean_dist_squared(double* point1, double* point2, int dim) {
     double dist = 0.0;
     int i;
@@ -22,16 +63,9 @@ double euclidean_dist_squared(double* point1, double* point2, int dim) {
 
 /* Similarity Matrix Calculation */
 double** calculate_similarity_matrix(double** data, int n, int dim) {
-    double** A;
+    double** A = allocate_matrix(n, n);
     int i, j;
 
-    /* Allocate memory for similarity matrix */
-    A = (double**)malloc(n * sizeof(double*));
-    for (i = 0; i < n; i++) {
-        A[i] = (double*)malloc(n * sizeof(double));
-    }
-
-    /* Calculate similarity */
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
             if (i == j) {
@@ -48,13 +82,10 @@ double** calculate_similarity_matrix(double** data, int n, int dim) {
 
 /* Diagonal Degree Matrix Calculation */
 double** calculate_diagonal_degree_matrix(double** similarity, int n) {
-    double** D;
+    double** D = allocate_matrix(n, n);
     int i, j;
 
-    /* Allocate memory for diagonal degree matrix */
-    D = (double**)malloc(n * sizeof(double*));
     for (i = 0; i < n; i++) {
-        D[i] = (double*)calloc(n, sizeof(double));
         D[i][i] = 0.0;
         for (j = 0; j < n; j++) {
             D[i][i] += similarity[i][j];
@@ -66,19 +97,17 @@ double** calculate_diagonal_degree_matrix(double** similarity, int n) {
 
 /* Normalized Similarity Matrix Calculation */
 double** calculate_normalized_similarity(double** A, double** D, int n) {
-    double** W;
+    double** W = allocate_matrix(n, n);
     int i, j;
 
-    /* Allocate memory for normalized matrix */
-    W = (double**)malloc(n * sizeof(double*));
-    for (i = 0; i < n; i++) {
-        W[i] = (double*)malloc(n * sizeof(double));
-    }
-
-    /* Calculate D^(-1/2) * A * D^(-1/2) */
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
-            W[i][j] = A[i][j] / sqrt(D[i][i] * D[j][j]);
+            double sqrt_deg_i = sqrt(D[i][i]);
+            double sqrt_deg_j = sqrt(D[j][j]);
+            
+            W[i][j] = (sqrt_deg_i < EPSILON || sqrt_deg_j < EPSILON) 
+                ? 0.0 
+                : A[i][j] / (sqrt_deg_i * sqrt_deg_j);
         }
     }
 
@@ -88,14 +117,12 @@ double** calculate_normalized_similarity(double** A, double** D, int n) {
 /* SymNMF H Optimization */
 double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
     double** H = initial_H;
-    double** H_prev;
+    double** H_prev = allocate_matrix(n, k);
     int iter, i, j;
     double frobenius_norm;
 
-    /* Allocate memory for previous H */
-    H_prev = (double**)malloc(n * sizeof(double*));
+    /* Copy initial H */
     for (i = 0; i < n; i++) {
-        H_prev[i] = (double*)malloc(k * sizeof(double));
         memcpy(H_prev[i], H[i], k * sizeof(double));
     }
 
@@ -105,20 +132,20 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
         for (i = 0; i < n; i++) {
             for (j = 0; j < k; j++) {
                 double numerator = 0.0, denominator = 0.0;
-                int l;
+                int l, m;
 
                 /* Calculate components for update */
                 for (l = 0; l < n; l++) {
                     double temp = 0.0;
-                    int m;
                     for (m = 0; m < k; m++) {
                         temp += H[l][m] * H[l][m];
                     }
+                    
                     numerator += W[i][l] * H[l][j];
                     denominator += temp * H[i][j];
                 }
 
-                H[i][j] *= (1.0 - BETA + BETA * numerator / denominator);
+                H[i][j] *= (1.0 - BETA + BETA * safe_divide(numerator, denominator));
             }
         }
 
@@ -141,16 +168,8 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
         }
     }
 
-    /* Free H_prev */
-    for (i = 0; i < n; i++) {
-        free(H_prev[i]);
-    }
-    free(H_prev);
+    /* Free temporary matrix */
+    free_matrix(H_prev, n);
 
     return H;
-}
-
-int main(int argc, char* argv[]) {
-    /* Your implementation for command-line argument processing */
-    return 0;
 }
