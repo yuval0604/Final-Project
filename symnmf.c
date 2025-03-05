@@ -8,49 +8,60 @@
 #define MAX_ITER 300
 #define BETA 0.5
 
-/* Memory management: free 2D matrix */
-void free_matrix(double** matrix, int rows) {
-    int i;
-    if (matrix) {
-        for (i = 0; i < rows; i++) {
-            free(matrix[i]);
-        }
-        free(matrix);
-    }
-}
+/* --- פונקציות ניהול זיכרון --- */
+double** allocate_matrix(int rows, int cols);
+void free_matrix(double** mat, int rows);
+void print_matrix(double** mat, int rows, int cols);
 
-/* Safe memory allocation with error handling */
+/* --- חישובי מטריצות --- */
+double euclidean_dist_squared(double* point1, double* point2, int dim);
+double** calculate_similarity_matrix(double** data, int n, int dim);
+double** calculate_diagonal_degree_matrix(double** similarity, int n);
+double** calculate_normalized_similarity(double** A, double** D, int n);
+double** symnmf_optimization(double** W, int n, int k, double** initial_H);
+
+/* --- ניהול זיכרון --- */
 double** allocate_matrix(int rows, int cols) {
-    double** matrix;
     int i;
-
-    matrix = (double**)malloc(rows * sizeof(double*));
-    if (!matrix) {
+    double** mat = (double**)malloc(rows * sizeof(double*));
+    if (!mat) {
         fprintf(stderr, "An Error Has Occurred\n");
         exit(1);
     }
-
     for (i = 0; i < rows; i++) {
-        matrix[i] = (double*)calloc(cols, sizeof(double));
-        if (!matrix[i]) {
-            /* Free previously allocated rows */
-            free_matrix(matrix, i);
+        mat[i] = (double*)calloc(cols, sizeof(double));
+        if (!mat[i]) {
+            free_matrix(mat, i);
             fprintf(stderr, "An Error Has Occurred\n");
             exit(1);
         }
     }
-    return matrix;
+    return mat;
 }
 
-/* Safe value handling to prevent division by zero */
-double safe_divide(double numerator, double denominator) {
-    if (fabs(denominator) < EPSILON) {
-        return numerator / EPSILON;
+void free_matrix(double** mat, int rows) {
+    int i;
+    if (mat) {
+        for (i = 0; i < rows; i++) {
+            if (mat[i]) {
+                free(mat[i]);
+            }
+        }
+        free(mat);
     }
-    return numerator / denominator;
 }
 
-/* Euclidean distance calculation */
+void print_matrix(double** mat, int rows, int cols) {
+    int i, j;
+    for (i = 0; i < rows; i++) {
+        for (j = 0; j < cols; j++) {
+            printf("%.4f ", mat[i][j]);
+        }
+        printf("\n");
+    }
+}
+
+/* --- חישובי מטריצות --- */
 double euclidean_dist_squared(double* point1, double* point2, int dim) {
     double dist = 0.0;
     int i;
@@ -61,95 +72,78 @@ double euclidean_dist_squared(double* point1, double* point2, int dim) {
     return dist;
 }
 
-/* Similarity Matrix Calculation */
 double** calculate_similarity_matrix(double** data, int n, int dim) {
     double** A = allocate_matrix(n, n);
     int i, j;
-
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
-            if (i == j) {
-                A[i][j] = 0.0;
-            } else {
-                double dist = euclidean_dist_squared(data[i], data[j], dim);
-                A[i][j] = exp(-dist);
-            }
+            A[i][j] = (i == j) ? 0.0 : exp(-euclidean_dist_squared(data[i], data[j], dim));
         }
     }
-
     return A;
 }
 
-/* Diagonal Degree Matrix Calculation */
 double** calculate_diagonal_degree_matrix(double** similarity, int n) {
     double** D = allocate_matrix(n, n);
     int i, j;
-
     for (i = 0; i < n; i++) {
-        D[i][i] = 0.0;
         for (j = 0; j < n; j++) {
             D[i][i] += similarity[i][j];
         }
     }
-
     return D;
 }
 
-/* Normalized Similarity Matrix Calculation */
 double** calculate_normalized_similarity(double** A, double** D, int n) {
     double** W = allocate_matrix(n, n);
     int i, j;
-
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
             double sqrt_deg_i = sqrt(D[i][i]);
             double sqrt_deg_j = sqrt(D[j][j]);
-            
             W[i][j] = (sqrt_deg_i < EPSILON || sqrt_deg_j < EPSILON) 
                 ? 0.0 
                 : A[i][j] / (sqrt_deg_i * sqrt_deg_j);
         }
     }
-
     return W;
 }
 
-/* SymNMF H Optimization */
+/* --- SymNMF אופטימיזציה --- */
 double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
-    double** H = initial_H;
+    double** H = allocate_matrix(n, k);
     double** H_prev = allocate_matrix(n, k);
-    int iter, i, j;
+    int iter, i, j, l, m;
     double frobenius_norm;
 
-    /* Copy initial H */
+    /* אתחול H */
     for (i = 0; i < n; i++) {
-        memcpy(H_prev[i], H[i], k * sizeof(double));
+        memcpy(H[i], initial_H[i], k * sizeof(double));
+        memcpy(H_prev[i], H[i], k * sizeof(double));  // מעתיק את H ולא את initial_H
     }
 
-    /* Iterative update */
     for (iter = 0; iter < MAX_ITER; iter++) {
-        /* Update H */
+        /* עדכון H */
         for (i = 0; i < n; i++) {
             for (j = 0; j < k; j++) {
                 double numerator = 0.0, denominator = 0.0;
-                int l, m;
 
-                /* Calculate components for update */
                 for (l = 0; l < n; l++) {
-                    double temp = 0.0;
+                    numerator += W[i][l] * H[l][j];  // חישוב המונה (W * H)
+
+                    // חישוב המכנה (H * H^T * H)
+                    double hht_h = 0.0;
                     for (m = 0; m < k; m++) {
-                        temp += H[l][m] * H[l][m];
+                        hht_h += H[l][m] * H[l][m];  // נוסחה מתוקנת
                     }
-                    
-                    numerator += W[i][l] * H[l][j];
-                    denominator += temp * H[i][j];
+                    denominator += H[i][l] * hht_h;
                 }
 
-                H[i][j] *= (1.0 - BETA + BETA * safe_divide(numerator, denominator));
+                H[i][j] *= (1.0 - BETA + BETA * (numerator / (denominator + EPSILON)));
             }
         }
 
-        /* Check convergence */
+        /* בדיקת התכנסות */
         frobenius_norm = 0.0;
         for (i = 0; i < n; i++) {
             for (j = 0; j < k; j++) {
@@ -162,14 +156,13 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
             break;
         }
 
-        /* Update H_prev */
+        /* עדכון H_prev */
         for (i = 0; i < n; i++) {
             memcpy(H_prev[i], H[i], k * sizeof(double));
         }
     }
 
-    /* Free temporary matrix */
+    /* שחרור זיכרון */
     free_matrix(H_prev, n);
-
     return H;
 }
