@@ -8,7 +8,7 @@
 #define MAX_ITER 300
 #define BETA 0.5
 
-void print_error_and_exit(void) {
+void print_error_and_exit() {
     printf("An Error Has Occurred\n");
     exit(1);
 }
@@ -43,7 +43,7 @@ double** allocate_matrix(int rows, int cols) {
     return matrix;
 }
 
-static double** marix_mul(double** mat1, int n, double** mat2, int k) {
+static double** matrix_mul(double** mat1, int n, double** mat2, int k) {
     double** res = allocate_matrix(n, k);
     double sum_res = 0.0;
     int row, col, l;
@@ -65,7 +65,7 @@ static double** compute_HtH(double** H, int n, int k) {
     for (row = 0; row < k; row++) {
         for (col = 0; col < k; col++) {
             for (rowH = 0; rowH < n; rowH++) {
-                sum_res += H[rowH][r] * H[rowH][c];
+                sum_res += H[rowH][row] * H[rowH][col];
             }
             res[row][col] = sum_res;
         }
@@ -168,9 +168,9 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
 
     for (iter = 0; iter < MAX_ITER; iter++) {
         
-        double** WH = marix_mul(W, n, H, k)
-        double** HtH = compute_HtH(H, n, k)
-        double** HHth = marix_mul(HHt, n, H, k)
+        double** WH = matrix_mul(W, n, H, k);
+        double** HtH = compute_HtH(H, n, k);
+        double** HHtH = matrix_mul(H, n, HtH, k);
 
         // Update H
         for (i = 0; i < n; i++) {
@@ -197,8 +197,8 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
             }
         }
 
-        free_matrix(WH,   n);
-        free_matrix(HtH,  k);
+        free_matrix(WH, n);
+        free_matrix(HtH, k);
         free_matrix(HHtH, n);
 
         //Check convergence
