@@ -5,7 +5,7 @@ module = Extension(
     'symnmf',
     sources=['symnmfmodule.c', 'symnmf.c'],
     include_dirs=[np.get_include()],
-    extra_compile_args=['-ansi','-Wall','-Wextra','-Werror','-pedantic-errors'],
+    extra_compile_args=['-std=c99','-Wall','-Wextra','-Werror','-pedantic-errors'],
 )
 
 setup(
