@@ -60,17 +60,17 @@ static PyObject* py_sym(PyObject* self, PyObject* args){
     int rows, cols;
     PyObject* result;
     if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)) {return NULL}
-    if (PyArray_NDIM(data_array) != 2) {return NULL} //Just in case of xD array (x!=2)
+    if (PyArray_NDIM(data_array) != 2) {return NULL;}
 
-    data = numpy2D_to_C_matrix(data_array, &rows, &cols); // convert to a matrix
+    data = numpy2D_to_C_matrix(data_array, &rows, &cols); 
     if (!data) {return NULL;}
 
-    similarity_mat = calculate_similarity_matrix(data, rows, cols);
+    similarity = calculate_similarity_matrix(data, rows, cols);
     free_matrix(data, rows);
 
-    if (!similarity_mat) {return NULL;}
-    res = C_matrix_to_numpy2D(similarity, rows, rows);
-    return res;
+    if (!similarity) {return NULL;}
+    resault = C_matrix_to_numpy2D(similarity, rows, rows);
+    return resault;
 }
 
 /*
@@ -84,14 +84,13 @@ static PyObject* py_ddg(PyObject* self, PyObject* args) {
     int rows, cols;
     PyObject* result;
 
-    if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &sim_array)) return NULL;
+    if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)) return NULL;
 
     data = numpy2D_to_C_matrix(data_array, &rows, &cols);
     if (!data) return NULL;
 
     similarity = calculate_similarity_matrix(data, rows, cols);
     diagonal = calculate_diagonal_degree_matrix(similarity, rows);
-    free_matrix(similarity, rows);
     free_matrix(similarity, rows);
     if (!diagonal) return NULL;
 
@@ -125,7 +124,7 @@ static PyObject* py_norm(PyObject* self, PyObject* args) {
 
     if (!normalized) return NULL;
 
-    result = c_matrix_to_numpy2D(normalized, rows, rows);
+    result = C_matrix_to_numpy2D(normalized, rows, rows);
     return result;
 }
 
@@ -143,15 +142,15 @@ static PyObject* py_symnmf(PyObject *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "O!O!", &PyArray_Type, &w_array, &PyArray_Type, &h_array)) {return NULL;}
 
     W = numpy2D_to_C_matrix(w_array, &n, &n);
-    if (!W) {return Null;}
+    if (!W) {return NULL;}
 
     H = numpy2D_to_C_matrix(h_array, &n, &k);
-    if (!W) {return Null;}
+    if (!H) {return NULL;}
 
     result_H = symnmf_optimization(W, n, k, H);
-    free_matrix(W, n)
+    free_matrix(W, n);
 
-    result = c_matrix_to_numpy(result_H, n, k);
+    result = C_matrix_to_numpy2D(result_H, n, k);
     return result;
 }
 
