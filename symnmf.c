@@ -31,13 +31,13 @@ double** allocate_matrix(int rows, int cols) {
 
     matrix = (double**)malloc(rows * sizeof(double*));
     if (!matrix) {
-        print_error_and_exit(void);
+        print_error_and_exit();
     }
     for (i = 0; i < rows; i++) {
         matrix[i] = (double*)calloc(cols, sizeof(double));
         if (!matrix[i]) {
             free_matrix(matrix, i);
-            print_error_and_exit(void);
+            print_error_and_exit();
         }
     }
     return matrix;
