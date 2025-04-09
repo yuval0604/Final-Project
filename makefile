@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=gnu90 -Wall -Wextra -Werror -pedantic-errors
+CFLAGS = -ansi -Wall -Wextra -Werror -pedantic-errors
 
 all: symnmf
 
