@@ -10,7 +10,7 @@ void free_matrix(double** matrix, int rows);
 // Allocate matrix memory
 double** allocate_matrix(int rows, int cols);
 
-static double** marix_mul(double** mat1, int n, double** mat2, int k);
+static double** matrix_mul(double** mat1, int n, double** mat2, int k);
 
 
 static double** compute_HtH(double** H, int n, int k);
