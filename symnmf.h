@@ -1,7 +1,7 @@
 #ifndef SYMNMF_H
 #define SYMNMF_H
 
-void print_error_and_exit(void);
+void print_error_and_exit();
 
 // free matrix memory
 void free_matrix(double** matrix, int rows);
