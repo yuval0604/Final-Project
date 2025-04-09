@@ -8,12 +8,11 @@
 #define MAX_ITER 300
 #define BETA 0.5
 
-void print_error_and_exit() {
+void print_error_and_exit(void) {
     printf("An Error Has Occurred\n");
     exit(1);
 }
 
-// free matrix memory
 void free_matrix(double** matrix, int rows) {
     int i;
     if (matrix) {
@@ -24,7 +23,6 @@ void free_matrix(double** matrix, int rows) {
     }
 }
 
-// Allocate matrix memory
 double** allocate_matrix(int rows, int cols) {
     double** matrix;
     int i;
@@ -45,14 +43,14 @@ double** allocate_matrix(int rows, int cols) {
 
 static double** matrix_mul(double** mat1, int n, double** mat2, int k) {
     double** res = allocate_matrix(n, k);
-    double sum_res = 0.0;
     int row, col, l;
     for (row = 0; row < n; row++) {
         for (col = 0; col < k; col++) {
+            double sum_res = 0.0;
             for (l = 0; l < n; l++) {
                 sum_res += mat1[row][l] * mat2[l][col];
                 }
-        res[row][col] = sum_res;
+            res[row][col] = sum_res;
         }
     }
     return res;
@@ -60,14 +58,14 @@ static double** matrix_mul(double** mat1, int n, double** mat2, int k) {
 
 static double** compute_HtH(double** H, int n, int k) {
     double** res = allocate_matrix(k, k);
-    double sum_res = 0.0;
-    int row, col, rowH;
-    for (row = 0; row < k; row++) {
-        for (col = 0; col < k; col++) {
-            for (rowH = 0; rowH < n; rowH++) {
-                sum_res += H[rowH][row] * H[rowH][col];
+    int i, j, l;
+    for (i = 0; i < k; i++) {
+        for (j = 0; j < k; j++) {
+            double sum = 0.0;
+            for (l = 0; l < n; l++) {
+                sum += H[l][i] * H[l][j];
             }
-            res[row][col] = sum_res;
+            res[i][j] = sum;
         }
     }
     return res;
@@ -161,7 +159,6 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
     int iter, i, j;
     double norm;
 
-    // Copy initial H to H_prev
     for (i = 0; i < n; i++) {
         memcpy(H_prev[i], H[i], k * sizeof(double));
     }
@@ -172,21 +169,21 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
         double** HtH = compute_HtH(H, n, k);
         double** HHtH = matrix_mul(H, n, HtH, k);
 
-        // Update H
         for (i = 0; i < n; i++) {
             for (j = 0; j < k; j++) {
                 double hij = H[i][j];
                 double numerator   = WH[i][j];
                 double denominator = HHtH[i][j];
+                double frac;
+                double updated;
 
-                // avoid division by zero
-                if (abs(denominator) < EPSILON) {
+                if (fabs(denominator) < EPSILON) {
                     denominator = EPSILON;  
                 }
 
                 {
-                    double frac = numerator / denominator;
-                    double updated = hij * ((1.0 - BETA) + BETA * frac);
+                    frac = numerator / denominator;
+                    updated = hij * ((1.0 - BETA) + BETA * frac);
 
                     if (updated < 0.0) {
                         updated = 0.0;
@@ -201,7 +198,6 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
         free_matrix(HtH, k);
         free_matrix(HHtH, n);
 
-        //Check convergence
         norm = 0.0;
         for (i = 0; i < n; i++) {
             for (j = 0; j < k; j++) {
@@ -213,7 +209,6 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
             break;
         }
 
-        // copy H to H_prev
         for (i = 0; i < n; i++) {
             memcpy(H_prev[i], H[i], k * sizeof(double));
         }
@@ -222,7 +217,6 @@ double** symnmf_optimization(double** W, int n, int k, double** initial_H) {
     free_matrix(H_prev, n);
     return H;
 }
-
 
 
 
