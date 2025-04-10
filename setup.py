@@ -5,7 +5,7 @@ module = Extension(
     'symnmf',
     sources=['symnmfmodule.c', 'symnmf.c'],
     include_dirs=[np.get_include()],
-    extra_compile_args=['-std=c99','-Wall','-Wextra','-Werror','-pedantic-errors'],
+    extra_compile_args=['-std=c99','-Wall','-Wextra','-Werror','-pedantic-errors', "-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION"],
 )
 
 setup(
