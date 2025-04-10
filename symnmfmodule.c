@@ -1,6 +1,5 @@
 # define PY_SSIZE_T_CLEAN
-# include <Python.h>
-#include <numpy/arrayobject.h>
+#include "py_compat.h"
 #include "symnmf.h"
 
 /*
@@ -59,7 +58,10 @@ static PyObject* py_sym(PyObject* self, PyObject* args){
     double **data, **similarity;
     int rows, cols;
     PyObject* result;
-    if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)) {return NULL}
+    (void)self;
+    if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)) {
+        return NULL;
+    }
     if (PyArray_NDIM(data_array) != 2) {return NULL;}
 
     data = numpy2D_to_C_matrix(data_array, &rows, &cols); 
@@ -69,8 +71,8 @@ static PyObject* py_sym(PyObject* self, PyObject* args){
     free_matrix(data, rows);
 
     if (!similarity) {return NULL;}
-    resault = C_matrix_to_numpy2D(similarity, rows, rows);
-    return resault;
+    result = C_matrix_to_numpy2D(similarity, rows, rows);
+    return result;
 }
 
 /*
@@ -83,6 +85,7 @@ static PyObject* py_ddg(PyObject* self, PyObject* args) {
     double** data,**similarity, **diagonal;
     int rows, cols;
     PyObject* result;
+    (void)self;
 
     if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)) return NULL;
 
@@ -90,6 +93,9 @@ static PyObject* py_ddg(PyObject* self, PyObject* args) {
     if (!data) return NULL;
 
     similarity = calculate_similarity_matrix(data, rows, cols);
+    free_matrix(data, rows);
+    if (!similarity) return NULL;
+    
     diagonal = calculate_diagonal_degree_matrix(similarity, rows);
     free_matrix(similarity, rows);
     if (!diagonal) return NULL;
@@ -108,6 +114,7 @@ static PyObject* py_norm(PyObject* self, PyObject* args) {
     double** data, **similarity, **diagonal, **normalized;
     int rows, cols;
     PyObject* result;
+    (void)self;
 
     if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)){return NULL;}
 
@@ -138,6 +145,7 @@ static PyObject* py_symnmf(PyObject *self, PyObject *args) {
     double **W, **H, **result_H;
     int n, k;
     PyObject *result;
+    (void)self;
 
     if (!PyArg_ParseTuple(args, "O!O!", &PyArray_Type, &w_array, &PyArray_Type, &h_array)) {return NULL;}
 
@@ -173,7 +181,11 @@ static struct PyModuleDef symnmfmodule = {
     "symnmf",       
     "Symmetric Non-negative Matrix Factorization (SymNMF) implementation",
     -1,             
-    SymnmfMethods
+    SymnmfMethods,
+    NULL,
+    NULL,
+    NULL,
+    NULL
 };
 
 /*
