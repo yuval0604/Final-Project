@@ -1,205 +1,260 @@
-# define PY_SSIZE_T_CLEAN
-#include "py_compat.h"
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+#include <stdlib.h>
 #include "symnmf.h"
 
 /*
-Convert a NumPy 2D-array to a C matrix
-input: Numpy 2D array, 2 pointers to store the number of rows and columns.
+Convert a pyhton list of lists to a C matrix
+input: Python list, 2 pointers to store the number of rows and columns.
 output: Matrix (or NULL if memory allocation failed)
 */
-static double** numpy2D_to_C_matrix(PyArrayObject* array, int* rows, int* cols){
-    int i, j;
+double** pylist_to_cmatrix(PyObject* py_mat, int* n_ptr, int* d_ptr) {
+    int n, d, i, j;
+    PyObject* row;
     double** matrix;
 
-    *rows = (int)PyArray_DIM(array, 0);
-    *cols = (int)PyArray_DIM(array, 1);
+    if (!PyList_Check(py_mat)) {return NULL;}
 
-    matrix = allocate_matrix(*rows, *cols);
-    if (!matrix){return NULL;}
+    n = PyList_Size(py_mat);
+    if (n == 0) {return NULL;}
 
-    for(i = 0; i < *rows; i++){
-        for(j = 0; j < *cols; j++){
-            matrix[i][j] = *(double*)PyArray_GETPTR2(array, i, j);
+    row = PyList_GetItem(py_mat, 0);
+    if (!PyList_Check(row)) {return NULL;}
+    d = PyList_Size(row);
+
+    matrix = allocate_matrix(n, d);
+    if (matrix == NULL) {return NULL;}
+
+    for (i = 0; i < n; i++) {
+        row = PyList_GetItem(py_mat, i);
+        if (!PyList_Check(row) || PyList_Size(row) != d) {
+            free_matrix(matrix, n);
+            return NULL;
+        }
+        for (j = 0; j < d; j++) {
+            matrix[i][j] = PyFloat_AsDouble(PyList_GetItem(row, j));
         }
     }
 
+    *n_ptr = n;
+    *d_ptr = d;
     return matrix;
 }
 
 /*
-Convert a C matrix back to a numpy 2D-array 
+Convert a C matrix back to a python list of lists.
 input: C Matrix, num of rows, num of columns.
-output: A NumPy array (or NULL if creation failed)
+output: A python list
 */
-static PyObject* C_matrix_to_numpy2D(double** matrix, int rows, int cols){
+PyObject* cmatrix_to_pylist(double** matrix, int n, int m) {
     int i, j;
-    npy_intp dims[2] = {rows, cols};
-    PyObject* np_array = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
-    
-    if (!np_array) {return NULL;}
-    
-    for(i = 0; i < rows; i++){
-        for(j = 0; j < cols; j++){
-            *(double*)PyArray_GETPTR2((PyArrayObject*)np_array, i, j) = matrix[i][j];
+    PyObject* py_mat = PyList_New(n);
+    if (py_mat == NULL) {return NULL;}
+
+    for (i = 0; i < n; i++) {
+        PyObject* row = PyList_New(m);
+        if (row == NULL) {
+            Py_DECREF(py_mat);
+            return NULL;
         }
+        for (j = 0; j < m; j++) {
+            PyObject* item = PyFloat_FromDouble(matrix[i][j]);
+            if (item == NULL) {
+                Py_DECREF(row);
+                Py_DECREF(py_mat);
+                return NULL;
+            }
+            PyList_SetItem(row, j, item); 
+        }
+        PyList_SetItem(py_mat, i, row);
     }
-    
-    free_matrix(matrix, rows);
-    return np_array;
+    return py_mat;
 }
 
 /*
 Computes the similarity matrix A
-input: Numpy 2D array
-output: Similarity matrix A (as a 2D numpy array)
+input: Python object - list of lists
+output: Python object - Similarity matrix
 */
-static PyObject* py_sym(PyObject* self, PyObject* args){
-    PyArrayObject* data_array;
-    double **data, **similarity;
-    int rows, cols;
-    PyObject* result;
+static PyObject* py_sym(PyObject* self, PyObject* args) {
+    PyObject* py_data;
+    double** data;
+    double** result;
+    int n, d;
+    PyObject* output;
     (void)self;
-    if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)) {
+
+    if (!PyArg_ParseTuple(args, "O", &py_data)) {return NULL;}
+
+    data = pylist_to_cmatrix(py_data, &n, &d);
+    if (data == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
         return NULL;
     }
-    if (PyArray_NDIM(data_array) != 2) {return NULL;}
 
-    data = numpy2D_to_C_matrix(data_array, &rows, &cols); 
-    if (!data) {return NULL;}
+    result = calculate_similarity_matrix(data, n, d);
+    free_matrix(data, n);
 
-    similarity = calculate_similarity_matrix(data, rows, cols);
-    free_matrix(data, rows);
+    if (result == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
 
-    if (!similarity) {return NULL;}
-    result = C_matrix_to_numpy2D(similarity, rows, rows);
-    return result;
+    output = cmatrix_to_pylist(result, n, n);
+    free_matrix(result, n);
+
+    return output;
 }
 
 /*
 Computes the diagonal degree matrix D
-input: Numpy 2D array
-output: Diagonal degree matrix D (as a 2D numpy array)
+input: Python object - list of lists
+output: Python object - diagonal matrix
 */
 static PyObject* py_ddg(PyObject* self, PyObject* args) {
-    PyArrayObject* data_array;
-    double** data,**similarity, **diagonal;
-    int rows, cols;
-    PyObject* result;
+    PyObject* py_data;
+    double** data;
+    double** similarity;
+    double** result;
+    int n, d;
+    PyObject* output;
     (void)self;
 
-    if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)) return NULL;
+    if (!PyArg_ParseTuple(args, "O", &py_data)) {return NULL;}
 
-    data = numpy2D_to_C_matrix(data_array, &rows, &cols);
-    if (!data) return NULL;
+    data = pylist_to_cmatrix(py_data, &n, &d);
+    if (data == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
 
-    similarity = calculate_similarity_matrix(data, rows, cols);
-    free_matrix(data, rows);
-    if (!similarity) return NULL;
-    
-    diagonal = calculate_diagonal_degree_matrix(similarity, rows);
-    free_matrix(similarity, rows);
-    if (!diagonal) return NULL;
+    similarity = calculate_similarity_matrix(data, n, d);
+    free_matrix(data, n);
+    if (similarity == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
 
-    result = C_matrix_to_numpy2D(diagonal, rows, rows);
-    return result;
+    result = calculate_diagonal_degree_matrix(similarity, n);
+    free_matrix(similarity, n);
+
+    if (result == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
+
+    output = cmatrix_to_pylist(result, n, n);
+    free_matrix(result, n);
+
+    return output;
 }
 
 /*
 Computes the normalized similarity matrix W
-input: Numpy 2D array
-output: Normalized similarity matrix W (as a 2D numpy array)
+input: Python object - list of lists
+output: Python object - normalized similarity matrix
 */
 static PyObject* py_norm(PyObject* self, PyObject* args) {
-    PyArrayObject* data_array;
-    double** data, **similarity, **diagonal, **normalized;
-    int rows, cols;
-    PyObject* result;
+    PyObject* py_data;
+    double** data;
+    double** similarity;
+    double** result;
+    int n, d;
+    PyObject* output;
     (void)self;
 
-    if (!PyArg_ParseTuple(args, "O!", &PyArray_Type, &data_array)){return NULL;}
+    if (!PyArg_ParseTuple(args, "O", &py_data)) {return NULL;}
 
-    data = numpy2D_to_C_matrix(data_array, &rows, &cols);
-    if (!data){return NULL;}
+    data = pylist_to_cmatrix(py_data, &n, &d);
+    if (data == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
 
-    similarity = calculate_similarity_matrix(data, rows, cols);
-    diagonal = calculate_diagonal_degree_matrix(similarity, rows);
-    normalized = calculate_normalized_similarity(similarity, diagonal, rows);
+    similarity = calculate_similarity_matrix(data, n, d);
+    free_matrix(data, n);
+    if (similarity == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
 
-    free_matrix(data, rows);
-    free_matrix(similarity, rows);
-    free_matrix(diagonal, rows);
+    result = calculate_normalized_similarity(similarity, n);
+    free_matrix(similarity, n);
 
-    if (!normalized) return NULL;
+    if (result == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
 
-    result = C_matrix_to_numpy2D(normalized, rows, rows);
-    return result;
+    output = cmatrix_to_pylist(result, n, n);
+    free_matrix(result, n);
+
+    return output;
 }
 
-/*
-Performs full SymNMF on the normalized similarity matrix W, given an initial H
-input: Numpy 2D array (representing W), Numpy 2D array (representing H) 
-output: Optimized matrix H (as a 2D numpy array)
-*/
-static PyObject* py_symnmf(PyObject *self, PyObject *args) {
-    PyArrayObject *w_array, *h_array;
-    double **W, **H, **result_H;
+/* Performs full SymNMF on the normalized similarity matrix W, given an initial H
+input: Python object - list of lists(H), Python object - list of lists(W) 
+output: Python object - Optimized H */
+static PyObject* py_symnmf(PyObject* self, PyObject* args) {
+    PyObject* py_H;
+    PyObject* py_W;
+    double** H;
+    double** W;
     int n, k;
-    PyObject *result;
+    int save_dim;
+    PyObject* output;
     (void)self;
 
-    if (!PyArg_ParseTuple(args, "O!O!", &PyArray_Type, &w_array, &PyArray_Type, &h_array)) {return NULL;}
-
-    W = numpy2D_to_C_matrix(w_array, &n, &n);
-    if (!W) {return NULL;}
-
-    H = numpy2D_to_C_matrix(h_array, &n, &k);
-    if (!H) {return NULL;}
-
-    result_H = symnmf_optimization(W, n, k, H);
+    if (!PyArg_ParseTuple(args, "OO", &py_H, &py_W)) {return NULL;}
+    H = pylist_to_cmatrix(py_H, &n, &k);
+    if (H == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
+    W = pylist_to_cmatrix(py_W, &save_dim, &save_dim);
+    if (W == NULL) {
+        free_matrix(H, n);
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
+    if (save_dim != n) {
+        free_matrix(H, n);
+        free_matrix(W, save_dim);
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
+    if (symnmf(H, W, n, k) == NULL) {
+        free_matrix(H, n);
+        free_matrix(W, n);
+        PyErr_SetString(PyExc_RuntimeError, "An Error Has Occurred");
+        return NULL;
+    }
+    output = cmatrix_to_pylist(H, n, k);
+    free_matrix(H, n);
     free_matrix(W, n);
-
-    result = C_matrix_to_numpy2D(result_H, n, k);
-    return result;
+    return output;
 }
 
-/*
-Method definitions
-*/
-static PyMethodDef SymnmfMethods[] = {
+static PyMethodDef symnmfMethods[] = {
     {"sym", py_sym, METH_VARARGS, "Calculate similarity matrix"},
     {"ddg", py_ddg, METH_VARARGS, "Calculate diagonal degree matrix"},
     {"norm", py_norm, METH_VARARGS, "Calculate normalized similarity matrix"},
-    {"symnmf", py_symnmf, METH_VARARGS, "Perform SymNMF optimization"},
-    {NULL, NULL, 0, NULL} 
+    {"symnmf", py_symnmf, METH_VARARGS, "Run symnmf algorithm"},
+    {NULL, NULL, 0, NULL}
 };
 
-/*
-Module definition
-*/
 static struct PyModuleDef symnmfmodule = {
     PyModuleDef_HEAD_INIT,
-    "symnmf",       
-    "Symmetric Non-negative Matrix Factorization (SymNMF) implementation",
-    -1,             
-    SymnmfMethods,
+    "symnmf",
+    NULL,
+    -1,
+    symnmfMethods,
     NULL,
     NULL,
     NULL,
     NULL
 };
 
-/*
-Initialization function
-*/
 PyMODINIT_FUNC PyInit_symnmf(void) {
-    PyObject *m;
-    
-    import_array();
-    
-    m = PyModule_Create(&symnmfmodule);
-    if (m == NULL) {
-        return NULL;
-    }
-    
-    return m;
+    return PyModule_Create(&symnmfmodule);
 }
